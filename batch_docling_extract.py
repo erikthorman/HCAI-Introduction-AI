@@ -1,40 +1,48 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+"""
+Batch-extrahera text & struktur ur många PDF:er med Docling.
+- Reproducerar din "single document"-pipeline automatiskt för en hel mapp.
+- Skapar .json och/eller .md per PDF + index.csv.
+"""
+
+#Instruktioner:
+#Börja med att skapa en virtuell miljö och installera dependencies genom att klistra in följande kodstycke i terminalen:
 
 """
-Börja med att skapa en virtuell miljö och installera dependencies:
-
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -U pip
 pip install docling docling-core tqdm pandas
+"""
 
+#Ladda ner andra dependencies genom att klistra in följande kodstycke i terminalen:
+"""
+pip install -r requirements.txt
+"""
 
+#Kör scriptet i terminalen med följande kommandon(glöm inte lägga till sökvägen till dina PDF-filer och output-mappar):
+"""
+python batch_docling_extract.py \
+  --in_dir "/sökväg/till/strategier" 
+  --out_dir "/sökväg/till/output" 
+  --format both --recursive
+"""
 
-
-
-
-Batch-extrahera text & struktur ur många PDF:er med Docling.
-- Reproducerar din "single document"-pipeline automatiskt för en hel mapp.
-- Skapar .json och/eller .md per PDF + index.csv.
-
-Exempel:
-pip install -U docling docling-core tqdm pandas
-python batch_docling_extract.py --in_dir "/sökväg/till/strategier" --out_dir "/sökväg/till/output" --format both
-
-
+#Exempel
+"""
 python batch_docling_extract.py \
   --in_dir "/Users/erikthorman/Downloads/digital/Efter 2023.01.01" \
-  --out_dir "/Users/erikthorman/Downloads/digital/efter 2023 bearbetad" \
+  --out_dir "/Users/erikthorman/Downloads/digital/Efter 2023 Extraherad Text" \
   --format both --recursive
+"""
+#eller
 
-
+"""
 python batch_docling_extract.py \
   --in_dir "/Users/erikthorman/Downloads/digital/Före 2023.01.01" \
   --out_dir "/Users/erikthorman/Downloads/digital/Före 2023 Extraherad Text" \
   --format both --recursive
-
-
 """
 
 import os
