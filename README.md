@@ -3,9 +3,13 @@
 
 
 #För Mac IOS
+#skapa miljö
 
 python3 -m venv .venv
 source .venv/bin/activate
+
+#installera bibliotek
+
 pip install -U pip
 pip install docling docling-core tqdm pandas
 pip install -r requirements.txt
