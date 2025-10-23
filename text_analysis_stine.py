@@ -74,7 +74,7 @@ SWEDISH_STOPWORDS.update(COMMUNE_STOPWORDS)
 SWEDISH_STOPWORDS.update(PROVINCE_STOPWORDS)
 
 # (Valfritt) lägg till egna stoppord om du vill filtrera mer
-# SWEDISH_STOPWORDS.update({"ska", "kommer", "kan"})
+SWEDISH_STOPWORDS.update({"ska", "kommer", "kan", "kommun"})
 
 # --- Sökvägar – robusta relativt skriptets fil ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -203,18 +203,72 @@ if most_increased_stems:
 import pandas as pd
 output_path = os.path.join(BASE_DIR, "word_analysis_results.xlsx")
 
+def row_for_stem(stem: str):
+    """Bygger en rad med frekvenser och representativ ytform(er) för en given stam."""
+    cb = int(before_stem_counts.get(stem, 0))
+    ca = int(after_stem_counts.get(stem, 0))
+    # välj rep ytform från respektive period (bra för jämförelse)
+    rep_b = rep_surface(stem, before_stem_to_surface)
+    rep_a = rep_surface(stem, after_stem_to_surface)
+    # statusfält
+    if cb == 0 and ca > 0:
+        status = "new"
+    elif cb > 0 and ca == 0:
+        status = "removed"
+    else:
+        status = "both"
+    ratio = (ca / cb) if cb > 0 else (float("inf") if ca > 0 else 0.0)
+    return {
+        "stem": stem,
+        "rep_surface_before": rep_b if stem in before_stem_to_surface else None,
+        "rep_surface_after":  rep_a if stem in after_stem_to_surface  else None,
+        "count_before": cb,
+        "count_after": ca,
+        "ratio_after_over_before": ratio,
+        "status": status,
+    }
+
+# --- Blad 1: nya ord (med frekvenser) ---
 df_new = pd.DataFrame(
-    [rep_surface(s, after_stem_to_surface) for s in sorted(new_stems)],
-    columns=["new_words_rep_surface"]
+    [
+        {
+            "stem": s,
+            "rep_surface": rep_surface(s, after_stem_to_surface),
+            "count_before": int(before_stem_counts.get(s, 0)),
+            "count_after": int(after_stem_counts.get(s, 0)),
+            "ratio_after_over_before": float("inf")
+            if before_stem_counts.get(s, 0) == 0
+            else after_stem_counts[s] / before_stem_counts[s],
+        }
+        for s in sorted(new_stems)
+    ]
 )
+
+# --- Blad 2: borttagna ord (med frekvenser) ---
 df_removed = pd.DataFrame(
-    [rep_surface(s, before_stem_to_surface) for s in sorted(removed_stems)],
-    columns=["removed_words_rep_surface"]
+    [
+        {
+            "stem": s,
+            "rep_surface": rep_surface(s, before_stem_to_surface),
+            "count_before": int(before_stem_counts.get(s, 0)),
+            "count_after": 0,
+            "ratio_after_over_before": 0.0,
+        }
+        for s in sorted(removed_stems)
+    ]
 )
+
+# --- Blad 3: sammanfattning över ALLA stammar ---
+all_stems_sorted = sorted(before_stems | after_stems)
+df_summary = pd.DataFrame([row_for_stem(s) for s in all_stems_sorted])
+
+
 
 with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
     df_new.to_excel(writer, sheet_name="new_words", index=False)
     df_removed.to_excel(writer, sheet_name="removed_words", index=False)
+    df_summary.to_excel(writer, sheet_name="summary_all_stems", index=False)
+    
 
 print(f"\n💾 Resultaten har sparats till: {output_path}")
-print("Flikar: 'new_words' och 'removed_words' (representativa ytformer per stam)")
+print("Flikar: 'new_words', 'removed_words', 'summary_all_stems', 'top_increased'")
