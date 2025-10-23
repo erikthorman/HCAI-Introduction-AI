@@ -7,3 +7,10 @@ pip install -U pip
 pip install docling docling-core tqdm pandas
 pip install -r requirements.txt
 
+#För Windows
+
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -U pip
+pip install docling docling-core tqdm pandas
+pip install -r requirements.txt
