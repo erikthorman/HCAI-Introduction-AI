@@ -2,3 +2,5 @@ docling==2.57.0
 docling-core==2.49.0
 tqdm==4.67.1
 pandas==2.3.3
+matplotlib
+nltk
