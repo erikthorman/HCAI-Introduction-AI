@@ -14,7 +14,7 @@ SWEDISH_STOPWORDS = set(stopwords.words("swedish"))
 
 # (valfritt) lägg in kommuner/landskap + "s" från din tidigare lista om du vill
 # Här visar jag bara hur du kan hooka in egna stoppord:
-EXTRA_STOPWORDS = { "ska", "kommer", "kommun", "kommuner", "kommunens", "emmaboda", "vännäs", "sätt", "rätt", "genom", "kommunkoncernen", "samt", "image"
+EXTRA_STOPWORDS = {"norrbott", "olofströms","gislaveda","nykvar","emmabod","uppsal","åstorpa","gölisk","svedal","älmhult","itd","munkfor","munkfa","sydnärke","kungsöra","sandvik","årjänga","österåkers","ska", "stockholmarna", "kristianstads","karlstads","kommer", "kommun", "kommuner", "kommunens", "emmaboda", "vännäs", "sätt", "rätt", "genom", "kommunkoncernen", "samt", "image" ,"kr", "nok","pa","mom","ekerö","älmhults","lsa","göliska","eblomlådan","stockholmarnas","sydnärkes","säby", "rönninge","norsjö","degerfors","säby","torg"
     # exempel: "värmland","värmlands","stockholm","stockholms", ...
 }
 SWEDISH_STOPWORDS.update(EXTRA_STOPWORDS)
@@ -115,7 +115,7 @@ def normalize_whitespace(text: str) -> str:
     text = re.sub(r"\s+", " ", text).strip()
     return text
 
-def preprocess_text(text: str, lemmatize: bool = False) -> str:
+def preprocess_text(text: str, lemmatize: bool = True) -> str:
     """
     Clean markdown and basic normalization.
     - Keeps words (including åäö) and numbers removed.
@@ -151,7 +151,7 @@ def preprocess_text(text: str, lemmatize: bool = False) -> str:
 
     return t
 
-def load_markdown_texts(path_pattern, period_label, lemmatize=False):
+def load_markdown_texts(path_pattern, period_label, lemmatize=True):
     texts, files, labels = [], [], []
     for filepath in sorted(glob.glob(path_pattern)):
         raw = Path(filepath).read_text(encoding="utf-8")
@@ -168,18 +168,6 @@ def load_markdown_texts(path_pattern, period_label, lemmatize=False):
         labels.append(period_label)
     return texts, files, labels
 
-def load_markdown_texts(path_pattern, period_label):
-    texts, files, labels = [], [], []
-    for filepath in sorted(glob.glob(path_pattern)):
-        text = Path(filepath).read_text(encoding="utf-8")
-        text = normalize_text(text).strip()
-        # hoppa över väldigt korta filer
-        if len(text) < 20:
-            continue
-        texts.append(text)
-        files.append(Path(filepath).name)
-        labels.append(period_label)
-    return texts, files, labels
 
 texts_before, files_before, labels_before = load_markdown_texts(BEFORE_GLOB, "före")
 texts_after,  files_after,  labels_after  = load_markdown_texts(AFTER_GLOB, "efter")
@@ -302,6 +290,7 @@ def word_change_analysis(texts, periods, stopwords=SWEDISH_STOPWORDS, ngram=(1,1
     except Exception as e:
         print("Warning: could not create barplots:", e)
 
+
     # Optional: try to create a wordcloud for AFTER-only top terms (if wordcloud installed)
     try:
         from wordcloud import WordCloud
@@ -312,8 +301,17 @@ def word_change_analysis(texts, periods, stopwords=SWEDISH_STOPWORDS, ngram=(1,1
         wc_path = os.path.join(out_dir, "wordcloud_after.png")
         wc.to_file(wc_path)
         print(f"💾 Wordcloud (AFTER) saved: {wc_path}")
+
+        # Top BEFORE-enriched terms
+        before_top = df_terms.sort_values("log_odds", ascending=True).head(100)
+        freqs_before = dict(zip(before_top["term"], (before_top["count_before"] + 1)))
+        wc_before = WordCloud(width=1200, height=600, background_color="white", collocations=False, prefer_horizontal=0.9)
+        wc_before.generate_from_frequencies(freqs_before)
+        wc_before_path = os.path.join(out_dir, "wordcloud_before.png")
+        wc_before.to_file(wc_before_path)
+        print(f"💾 Wordcloud (BEFORE) saved: {wc_before_path}")
     except Exception:
-        # silently skip if library missing
+        # silently skip if library missing or other errors
         pass
 
     return df_terms
