@@ -16,15 +16,21 @@ from sklearn.cluster import KMeans
 from sklearn.decomposition import PCA
 from sklearn.feature_extraction.text import TfidfVectorizer
 
+# Stoppord (svenska) inkl. kommuner/landskap + genitiv-s
+import nltk, unicodedata
+from nltk.corpus import stopwords
+nltk.download("stopwords", quiet=True)
+
 # Minska varning från HuggingFace tokenizers vid multiprocess
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
 
 ########################################
-# Svenska stopwords (manuell lista)
+# Svenska stopwords (manuell lista + NLTK)
 ########################################
 
-SWEDISH_STOPWORDS = {
+# Manuella extra-stopplistor (behålls och unioneras med NLTK)
+MANUAL_EXTRA_STOPWORDS = {
     "och", "men", "det", "att", "som", "inte", "jag", "du", "han", "hon", "den",
     "detta", "de", "vi", "ni", "mig", "dig", "honom", "henne", "oss",
     "er", "min", "mitt", "mina", "din", "ditt", "dina", "sin", "sina", "vår",
@@ -79,9 +85,24 @@ SWEDISH_STOPWORDS = {
     # vanliga tilläggsord i dokument
     "kommun", "kommunen", "kommunal", "kommunstyrelse", "kommunfullmäktige",
     "region", "regionen", "landsting", "stadsdelsförvaltning", "förvaltning",
-    "myndighet", "myndigheten", "verksamhet", "organisation"
+    "myndighet", "myndigheten", "verksamhet", "organisation",
+
+    #manuella stopwords
+    "varav","toverud","utveckl","bengtsfa","gunn","guid","stahl","pris","ocksa","hööra","tjör","unikomfamilj",
+    "svalöva","degerfa","årjängas","norrbott", "olofströms","gislaveda","nykvar","emmabod","uppsal","åstorpa",
+    "gölisk","svedal","älmhult","itd","munkfor","munkfa","sydnärke","kungsöra","sandvik","årjänga","österåkers",
+    "ska", "stockholmarna", "kristianstads","karlstads","kommer", "kommun", "kommuner", "kommunens", "emmaboda", 
+    "vännäs", "sätt", "rätt", "genom", "kommunkoncernen", "samt", "image" ,"kr", "nok","pa","mom","ekerö","älmhults",
+    "lsa","göliska","eblomlådan","stockholmarnas","sydnärkes","säby", "rönninge","norsjö","degerfors","säby","torg"
+    
 
 }
+
+# NLTK:s svenska stoppord
+NLTK_SWEDISH = set(stopwords.words("swedish"))
+
+# Sammanfoga NLTK + manuella
+SWEDISH_STOPWORDS = set(NLTK_SWEDISH) | set(MANUAL_EXTRA_STOPWORDS)
 
 
 ########################################
