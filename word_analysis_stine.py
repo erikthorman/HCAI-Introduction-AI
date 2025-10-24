@@ -4,17 +4,7 @@ from pathlib import Path
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-
-# Embeddings / Topic modeling
-from sentence_transformers import SentenceTransformer
-from bertopic import BERTopic
 from sklearn.feature_extraction.text import CountVectorizer
-import umap
-import hdbscan
-import inspect
-
-# 👇 NYTT: Plotly för interaktiva figurer
-import plotly.express as px
 
 # Stoppord (svenska) inkl. kommuner/landskap + genitiv-s
 import nltk, re, unicodedata
@@ -24,7 +14,7 @@ SWEDISH_STOPWORDS = set(stopwords.words("swedish"))
 
 # (valfritt) lägg in kommuner/landskap + "s" från din tidigare lista om du vill
 # Här visar jag bara hur du kan hooka in egna stoppord:
-EXTRA_STOPWORDS = { "ska", "kommer", "kommun", "kommuner", "kommunens", "emmaboda", "vännäs", "sätt", "rätt", "genom", "kommunkoncernen", "samt", "image"
+EXTRA_STOPWORDS = {"norrbott", "olofströms","gislaveda","nykvar","emmabod","uppsal","åstorpa","gölisk","svedal","älmhult","itd","munkfor","munkfa","sydnärke","kungsöra","sandvik","årjänga","österåkers","ska", "stockholmarna", "kristianstads","karlstads","kommer", "kommun", "kommuner", "kommunens", "emmaboda", "vännäs", "sätt", "rätt", "genom", "kommunkoncernen", "samt", "image" ,"kr", "nok","pa","mom","ekerö","älmhults","lsa","göliska","eblomlådan","stockholmarnas","sydnärkes","säby", "rönninge","norsjö","degerfors","säby","torg"
     # exempel: "värmland","värmlands","stockholm","stockholms", ...
 }
 SWEDISH_STOPWORDS.update(EXTRA_STOPWORDS)
@@ -95,9 +85,6 @@ def normalize_text(s: str) -> str:
     # Unicode-normalisera och rensa dolda tecken
     return unicodedata.normalize("NFKC", s)
 
-def normalize_text(s: str) -> str:
-    # Unicode-normalisera och rensa dolda tecken
-    return unicodedata.normalize("NFKC", s)
 
 # --- NYTT: Markdown-aware cleaning + (optional) lemmatization ---
 def strip_markdown(text: str) -> str:
@@ -128,7 +115,7 @@ def normalize_whitespace(text: str) -> str:
     text = re.sub(r"\s+", " ", text).strip()
     return text
 
-def preprocess_text(text: str, lemmatize: bool = False) -> str:
+def preprocess_text(text: str, lemmatize: bool = True) -> str:
     """
     Clean markdown and basic normalization.
     - Keeps words (including åäö) and numbers removed.
@@ -164,7 +151,7 @@ def preprocess_text(text: str, lemmatize: bool = False) -> str:
 
     return t
 
-def load_markdown_texts(path_pattern, period_label, lemmatize=False):
+def load_markdown_texts(path_pattern, period_label, lemmatize=True):
     texts, files, labels = [], [], []
     for filepath in sorted(glob.glob(path_pattern)):
         raw = Path(filepath).read_text(encoding="utf-8")
@@ -181,18 +168,6 @@ def load_markdown_texts(path_pattern, period_label, lemmatize=False):
         labels.append(period_label)
     return texts, files, labels
 
-def load_markdown_texts(path_pattern, period_label):
-    texts, files, labels = [], [], []
-    for filepath in sorted(glob.glob(path_pattern)):
-        text = Path(filepath).read_text(encoding="utf-8")
-        text = normalize_text(text).strip()
-        # hoppa över väldigt korta filer
-        if len(text) < 20:
-            continue
-        texts.append(text)
-        files.append(Path(filepath).name)
-        labels.append(period_label)
-    return texts, files, labels
 
 texts_before, files_before, labels_before = load_markdown_texts(BEFORE_GLOB, "före")
 texts_after,  files_after,  labels_after  = load_markdown_texts(AFTER_GLOB, "efter")
@@ -202,248 +177,6 @@ files = files_before + files_after
 periods = labels_before + labels_after
 
 print(f"Totalt {len(texts)} dokument lästa ({len(texts_before)} före, {len(texts_after)} efter).")
-
-# --- Svenska BERT-embeddings från KB-Lab ---
-embed_model_name = "KBLab/sentence-bert-swedish-cased"
-embedder = SentenceTransformer(embed_model_name)
-
-print("Beräknar embeddings ...")
-embeddings = embedder.encode(texts, show_progress_bar=True, convert_to_numpy=True, normalize_embeddings=True)
-
-# --- Bygg BERTopic med svensk tokenisering/stoppord ---
-# CountVectorizer används internt i BERTopic för c-TF-IDF-tematermer
-vectorizer = CountVectorizer(
-    stop_words=list(SWEDISH_STOPWORDS),
-    lowercase=True,
-    token_pattern=r"\b[a-zA-ZåäöÅÄÖ]{2,}\b",
-    ngram_range=(1, 3)  # tillåt bi-/trigram för bättre temaetiketter
-)
-
-# UMAP + HDBSCAN inställningar (kan finjusteras)
-umap_model = umap.UMAP(
-    n_neighbors=15,
-    n_components=5,   # projicera till 5D för klustring (sen gör vi separat 2D för plot)
-    min_dist=0.0,
-    metric="cosine",
-    random_state=42
-)
-hdbscan_model = hdbscan.HDBSCAN(
-    min_cluster_size=3,
-    min_samples=1,
-    metric="euclidean",
-    cluster_selection_method="eom",
-    prediction_data=True
-)
-
-topic_model = BERTopic(
-    embedding_model=embedder,     # ger konsekventa embeddings internt
-    umap_model=umap_model,
-    hdbscan_model=hdbscan_model,
-    vectorizer_model=vectorizer,
-    language="multilingual",      # explicit språkhantering av tokenisering är via vectorizer ovan
-    top_n_words=10,               # hur många toppord som ska beskriva ett tema
-    calculate_probabilities=True,
-    verbose=True
-)
-
-# --- Fit-transform (vi skickar också in förberäknade embeddings för hastighet/stabilitet) ---
-topics, probs = topic_model.fit_transform(texts, embeddings=embeddings)
-
-# --- OPTIONAL: reducera/merga mycket lika teman för att minska dubbletter ---
-# Experimentera med topic_similarity_threshold (0.25-0.45) eller ange nr_topics
-# Detta returnerar en ny model (eller uppdaterar) och vi hämtar nya topic-tilldelningar.
-try:
-    sig = inspect.signature(topic_model.reduce_topics)
-    params = sig.parameters
-
-    if "topic_similarity_threshold" in params:
-        # nyare BERTopic-version som stödjer likhets-tröskel
-        topic_model = topic_model.reduce_topics(
-            docs=texts,
-            topics=topics,
-            probabilities=probs,
-            topic_similarity_threshold=0.35
-        )
-    elif "nr_topics" in params:
-        # äldre/stabil variant: ange önskat antal teman istället
-        topic_model = topic_model.reduce_topics(
-            docs=texts,
-            nr_topics=30
-        )
-    else:
-        # sista utväg: försök utan extra argument
-        topic_model = topic_model.reduce_topics(docs=texts)
-
-    # Re-transformera dokument för att få uppdaterade topic-assignments
-    topics, probs = topic_model.transform(texts)
-    print("Info: topics reduced/merged to reduce duplicates.")
-except Exception as e:
-    print("Warning: reduce_topics misslyckades:", e)
-
-# --- Skapa 2D-koordinater för visualisering (separat UMAP till 2D för snygg plot) ---
-print("Skapar 2D-embedding för visualisering ...")
-umap_2d = umap.UMAP(
-    n_neighbors=15,
-    n_components=2,
-    min_dist=0.1,
-    metric="cosine",
-    random_state=42
-)
-coords_2d = umap_2d.fit_transform(embeddings)
-
-# --- DataFrame med dokument, period, tema, 2D-koordinater ---
-df = pd.DataFrame({
-    "file": files,
-    "period": periods,
-    "topic": topics,
-    "x": coords_2d[:, 0],
-    "y": coords_2d[:, 1],
-})
-
-# Lägg till label per tema (BERTopic genererar etiketter av toppord)
-def topic_label(topic_id: int) -> str:
-    if topic_id == -1:
-        return "T-1: Outlier"
-    words = topic_model.get_topic(topic_id)
-    if not words:
-        return f"T{topic_id}: (tomt)"
-    top_terms = ", ".join(w for w, _ in words[:5])
-    return f"T{topic_id}: {top_terms}"
-
-df["topic_label"] = df["topic"].apply(topic_label)
-
-# =========================
-# 🔵 PLOTLy: INTERAKTIVA GRAFIKER
-# =========================
-
-# 1) Interaktiv topics-översikt (kluster/teman med toppord)
-fig_topics = topic_model.visualize_topics()
-fig_topics.write_html(os.path.join(BASE_DIR, "bertopic_topics.html"))
-
-# 2) Interaktiv dokument-plot i 2D (UMAP) med hover som visar dokument och tema
-#    (BERTopic räknar själv en 2D-reducering internt om vi inte ger reduced_embeddings)
-fig_docs = topic_model.visualize_documents(
-    texts,
-    embeddings=embeddings,      # använd dina embeddings för konsekvent projicering
-    custom_labels=True          # använd interna namn/toppord i hover
-)
-fig_docs.write_html(os.path.join(BASE_DIR, "bertopic_documents.html"))
-
-# 3) Extra: egen Plotly-scatter (UMAP 2D vi redan beräknat) färgad per period + hover
-fig_period = px.scatter(
-    df, x="x", y="y",
-    color="period",
-    hover_data={"file": True, "topic": True, "topic_label": True, "x": False, "y": False},
-    title="UMAP 2D – färgad per period (hover visar fil & tema)"
-)
-fig_period.write_html(os.path.join(BASE_DIR, "umap_period_scatter.html"))
-
-print("\n🖼️ Plotly-figurer sparade som:")
-print(" - bertopic_topics.html")
-print(" - bertopic_documents.html")
-print(" - umap_period_scatter.html")
-
-# --- (valfritt) Matplotlib-plot finns kvar om du vill ha statisk bild ---
-plt.figure(figsize=(10, 8))
-for (period), g in df.groupby("period"):
-    plt.scatter(g["x"], g["y"], alpha=0.75, s=50, label=period)
-plt.title("Tematiska kluster med BERTopic (UMAP 2D)")
-plt.xlabel("UMAP-1")
-plt.ylabel("UMAP-2")
-plt.legend(title="Period")
-plt.tight_layout()
-plt.show()
-
-# --- Översikt över teman ---
-topic_info = topic_model.get_topic_info()  # kolumner: Topic, Count, Name
-
-def build_name(row):
-    tid = int(row["Topic"])
-    if tid == -1:
-        return "T-1: Outlier"
-    words = topic_model.get_topic(tid)
-    top_terms = ", ".join(w for w, _ in (words[:5] or []))
-    return f"T{tid}: {top_terms}" if top_terms else f"T{tid}"
-
-topic_info["Name"] = topic_info.apply(build_name, axis=1)
-
-# --- Temafördelning före/efter ---
-dist = (
-    df.groupby(["topic_label", "period"])
-      .size()
-      .reset_index(name="count")
-      .pivot(index="topic_label", columns="period", values="count")
-      .fillna(0)
-      .astype(int)
-)
-
-# Säkerställ kolumnerna även om en period saknas i datat
-for col in ["före", "efter"]:
-    if col not in dist.columns:
-        dist[col] = 0
-
-# Sortera efter total antal dokument per tema (flest överst)
-dist["_total"] = dist.sum(axis=1)
-dist = dist.sort_values("_total", ascending=False).drop(columns="_total")
-
-# Bygg counts per topic id (inte bara topic_label) så vi kan sortera + visa label
-topic_counts = df.groupby(["topic", "period"]).size().unstack(fill_value=0)
-# Säkerställ att båda kolumner finns
-for c in ["före", "efter"]:
-    if c not in topic_counts.columns:
-        topic_counts[c] = 0
-topic_counts = topic_counts[["före", "efter"]]
-
-# Mappa till mänsklig label
-topic_counts = topic_counts.reset_index().rename(columns={"före":"count_before", "efter":"count_after"})
-topic_counts["topic_label"] = topic_counts["topic"].map(lambda t: topic_label(int(t)))
-
-# Beräkna andel 'efter' inom temat, ratio och avvikelse från global andel
-topic_counts["share_after"] = topic_counts["count_after"] / (topic_counts["count_before"] + topic_counts["count_after"] + 1e-9)
-global_after_share = (df["period"] == "efter").mean()
-topic_counts["delta_vs_global"] = topic_counts["share_after"] - global_after_share
-topic_counts["ratio_after_over_before"] = (topic_counts["count_after"] + 1) / (topic_counts["count_before"] + 1)
-
-# Sortera och spara top förändringar
-top_increased = topic_counts.sort_values("ratio_after_over_before", ascending=False).head(20)
-top_decreased = topic_counts.sort_values("ratio_after_over_before", ascending=True).head(20)
-
-# Skriv ut kort i konsolen
-print("\n— Top temas som blivit mer vanliga EFTER (ratio efter/före) —")
-for _, r in top_increased.iterrows():
-    print(f"{r['topic_label']:<40} before={int(r['count_before']):3} after={int(r['count_after']):3} ratio={r['ratio_after_over_before']:.2f} Δ={r['delta_vs_global']:.2f}")
-
-print("\n— Top temas som blivit mindre vanliga EFTER —")
-for _, r in top_decreased.iterrows():
-    print(f"{r['topic_label']:<40} before={int(r['count_before']):3} after={int(r['count_after']):3} ratio={r['ratio_after_over_before']:.2f} Δ={r['delta_vs_global']:.2f}")
-
-# Export: lägg till blad i excel-filen och spara CSV
-change_out_csv = os.path.join(BASE_DIR, "topic_change_summary.csv")
-topic_counts.to_csv(change_out_csv, index=False, encoding="utf-8")
-
-# Lägg till som nytt blad i befintlig excel (append/replace)
-try:
-    with pd.ExcelWriter(out_path, engine="openpyxl", mode="a", if_sheet_exists="replace") as writer:
-        topic_counts.to_excel(writer, sheet_name="topic_change", index=False)
-except Exception:
-    # fallback: skriv separat workbook om append inte stöds
-    topic_counts.to_excel(os.path.join(BASE_DIR, "topic_change_summary.xlsx"), index=False)
-
-print(f"\n💾 Topic change summary saved: {change_out_csv}")
-# --- Exportera till Excel med flera flikar ---
-out_path = os.path.join(BASE_DIR, "bertopic_results.xlsx")
-with pd.ExcelWriter(out_path, engine="openpyxl") as writer:
-    topic_info.to_excel(writer, sheet_name="topics_overview", index=False)
-    df[["file", "period", "topic", "topic_label"]].to_excel(writer, sheet_name="doc_topics", index=False)
-    dist.to_excel(writer, sheet_name="topic_period_distribution")
-
-print(f"\n💾 Resultat sparade till: {out_path}")
-print("Flikar: topics_overview, doc_topics, topic_period_distribution")
-
-# --- (valfritt) Skriv ut toppord per tema i konsolen ---
-print("\n— Teman och toppord —")
-for tid in sorted(df["topic"].unique()):
-    print(topic_label(tid))
 
 import math
 from sklearn.feature_extraction.text import TfidfTransformer
@@ -461,7 +194,7 @@ def fdr_bh(pvals):
     q_sorted = np.minimum.accumulate(q[np.argsort(-ranks)])[np.argsort(-ranks)]
     return np.minimum(q_sorted, 1.0)
 
-def word_change_analysis(texts, periods, stopwords=None, ngram=(1,1), n_top=25, out_dir=BASE_DIR):
+def word_change_analysis(texts, periods, stopwords=SWEDISH_STOPWORDS, ngram=(1,1), n_top=25, out_dir=BASE_DIR):
     """
     Word-level comparison BEFORE vs AFTER.
     - texts: list of cleaned strings (you already have `texts`)
@@ -557,6 +290,7 @@ def word_change_analysis(texts, periods, stopwords=None, ngram=(1,1), n_top=25, 
     except Exception as e:
         print("Warning: could not create barplots:", e)
 
+
     # Optional: try to create a wordcloud for AFTER-only top terms (if wordcloud installed)
     try:
         from wordcloud import WordCloud
@@ -567,8 +301,17 @@ def word_change_analysis(texts, periods, stopwords=None, ngram=(1,1), n_top=25, 
         wc_path = os.path.join(out_dir, "wordcloud_after.png")
         wc.to_file(wc_path)
         print(f"💾 Wordcloud (AFTER) saved: {wc_path}")
+
+        # Top BEFORE-enriched terms
+        before_top = df_terms.sort_values("log_odds", ascending=True).head(100)
+        freqs_before = dict(zip(before_top["term"], (before_top["count_before"] + 1)))
+        wc_before = WordCloud(width=1200, height=600, background_color="white", collocations=False, prefer_horizontal=0.9)
+        wc_before.generate_from_frequencies(freqs_before)
+        wc_before_path = os.path.join(out_dir, "wordcloud_before.png")
+        wc_before.to_file(wc_before_path)
+        print(f"💾 Wordcloud (BEFORE) saved: {wc_before_path}")
     except Exception:
-        # silently skip if library missing
+        # silently skip if library missing or other errors
         pass
 
     return df_terms
