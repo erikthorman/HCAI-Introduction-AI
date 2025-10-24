@@ -14,7 +14,7 @@ SWEDISH_STOPWORDS = set(stopwords.words("swedish"))
 
 # (valfritt) lägg in kommuner/landskap + "s" från din tidigare lista om du vill
 # Här visar jag bara hur du kan hooka in egna stoppord:
-EXTRA_STOPWORDS = {"norrbott", "olofströms","gislaveda","nykvar","emmabod","uppsal","åstorpa","gölisk","svedal","älmhult","itd","munkfor","munkfa","sydnärke","kungsöra","sandvik","årjänga","österåkers","ska", "stockholmarna", "kristianstads","karlstads","kommer", "kommun", "kommuner", "kommunens", "emmaboda", "vännäs", "sätt", "rätt", "genom", "kommunkoncernen", "samt", "image" ,"kr", "nok","pa","mom","ekerö","älmhults","lsa","göliska","eblomlådan","stockholmarnas","sydnärkes","säby", "rönninge","norsjö","degerfors","säby","torg"
+EXTRA_STOPWORDS = {"varav","toverud","utveckl","bengtsfa","gunn","guid","stahl","pris","ocksa","hööra","tjör","unikomfamilj","svalöva","degerfa","årjängas","norrbott", "olofströms","gislaveda","nykvar","emmabod","uppsal","åstorpa","gölisk","svedal","älmhult","itd","munkfor","munkfa","sydnärke","kungsöra","sandvik","årjänga","österåkers","ska", "stockholmarna", "kristianstads","karlstads","kommer", "kommun", "kommuner", "kommunens", "emmaboda", "vännäs", "sätt", "rätt", "genom", "kommunkoncernen", "samt", "image" ,"kr", "nok","pa","mom","ekerö","älmhults","lsa","göliska","eblomlådan","stockholmarnas","sydnärkes","säby", "rönninge","norsjö","degerfors","säby","torg"
     # exempel: "värmland","värmlands","stockholm","stockholms", ...
 }
 SWEDISH_STOPWORDS.update(EXTRA_STOPWORDS)
@@ -291,7 +291,7 @@ def word_change_analysis(texts, periods, stopwords=SWEDISH_STOPWORDS, ngram=(1,1
         print("Warning: could not create barplots:", e)
 
 
-    # Optional: try to create a wordcloud for AFTER-only top terms (if wordcloud installed)
+    # Create a wordcloud for AFTER and BEFORE top terms
     try:
         from wordcloud import WordCloud
         after_only = df_terms.sort_values("log_odds", ascending=False).head(100)
