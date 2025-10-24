@@ -1,325 +1,318 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-"""
-clustering_erik.py
-
-Läser Markdown-filer från två mappar (Före/Efter), gör TF-IDF, klustrar (KMeans),
-tar fram topptermer per kluster, jämför perioder och sparar resultat + figurer.
-
-Output (i --out_dir, default: data/analysis_results):
-- docs_with_clusters.csv          (varje dokument med kluster, period, filnamn)
-- cluster_top_terms.csv           (toppord per kluster)
-- cluster_period_distribution.csv (antal dokument per period i varje kluster)
-- tfidf_diff_terms.csv            (ord som ökat/minskat mest: efter - före)
-- tsne_clusters.png               (2D-plot av dokumenten färgade per kluster)
-- tsne_periods.png                (2D-plot färgade per period)
-"""
-
-import argparse
 import os
 import re
-import json
-import unicodedata
-from pathlib import Path
-from typing import List, Tuple, Dict
+import glob
+import argparse
+from collections import Counter
 
 import numpy as np
 import pandas as pd
+from tqdm import tqdm
 import matplotlib.pyplot as plt
 
-from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.cluster import KMeans
-from sklearn.decomposition import TruncatedSVD
-from sklearn.manifold import TSNE
+from sklearn.decomposition import PCA
+from sklearn.feature_extraction.text import TfidfVectorizer
+
+# Minska varning från HuggingFace tokenizers vid multiprocess
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
 
-# ---------- Grund-liten svensk stopwordslista (så vi slipper extra paket) ----------
+########################################
+# Svenska stopwords (manuell lista)
+########################################
+
 SWEDISH_STOPWORDS = {
-    "och","det","att","i","en","jag","hon","som","han","på","den","med","var",
-    "sig","för","så","till","är","men","ett","om","hade","de","av","icke","mig",
-    "du","henne","då","sin","nu","har","inte","hans","honom","skulle","hennes",
-    "där","min","man","ej","vid","kunde","något","från","ut","när","efter","upp",
-    "vi","dem","vara","vad","över","än","dig","kan","sina","här","ha","mot","alla",
-    "under","någon","eller","allt","mycket","sedan","ju","denna","själv","detta",
-    "åt","utan","varit","hur","ingen","mitt","ni","bli","blev","oss","din","dessa",
-    "några","deras","blir","mina","samma","vilken","er","sådan","vår","blivit",
-    "dess","inom","mellan","sådant","varför","varje","vilka","ditt","vem","vilket",
-    "sitta","sådana","vart","dina","vars","vårt","våra","ert","era","vilkas"
+    "och", "men", "det", "att", "som", "inte", "jag", "du", "han", "hon", "den",
+    "detta", "de", "vi", "ni", "mig", "dig", "honom", "henne", "oss",
+    "er", "min", "mitt", "mina", "din", "ditt", "dina", "sin", "sina", "vår",
+    "vårt", "våra", "ert", "era",
+    "är", "var", "vara", "varit", "blir", "blev", "bli",
+    "har", "hade", "ha",
+    "kan", "kunde", "ska", "skulle", "måste", "får", "få",
+    "på", "i", "från", "till", "för", "med", "utan", "över", "under",
+    "efter", "innan", "mellan", "inom", "utom", "vid", "hos", "om",
+    "så", "då", "när", "nu", "här", "där", "dessa", "denna", "detta",
+    "vad", "vilken", "vilka", "vilket", "varför", "hur", "varje",
+    "också", "även", "mycket", "sådan", "sådana", "samma", "all", "alla",
+    "ingen", "inget", "någon", "något", "några",
+    "man", "en", "ett", "av",
+
+    # SWEDISH_MUNICIPALITIES
+    "ale", "alingsås", "alvesta", "aneby", "arboga", "arjeplog", "arvidsjaur", "arvika",
+    "askersund", "avesta", "bengtsfors", "berg", "bjurholm", "bjuv", "boden", "bollebygd",
+    "bollnäs", "borgholm", "borlänge", "borås", "botkyrka", "boxholm", "bromölla", "bräcke",
+    "burlöv", "båstad", "dals-ed", "danderyd", "deg­erfors", "dorotea", "eda", "eksjö",
+    "emmaboda", "en­köping", "eskilstuna", "es­löv", "essunga", "fagersta", "falkenberg",
+    "falköping", "falun", "filipstad", "finspång", "fjäll­backa", "flen", "forshaga", "gagnef",
+    "gislaved", "gnesta", "gnosjö", "gotland", "grums", "grästorp", "gullspång", "gällivare",
+    "gävle", "göteborg", "hagfors", "hallsberg", "hallstahammar", "halmstad", "hammarö",
+    "haninge", "haparanda", "heby", "hedemora", "helsingborg", "herrljunga", "hjo", "hofors",
+    "huddinge", "hudiksvall", "hultsfred", "hylte", "håbo", "hällefors", "härjedalen", "härnösand",
+    "härryda", "hässleholm", "höganäs", "högsby", "hörby", "höör", "jokkmokk", "jörköping",
+    "kalix", "kalmar", "karlsborg", "karlshamn", "karlskoga", "karlskrona", "karlstad",
+    "katrineholm", "kil", "kinda", "kiruna", "klippan", "knivsta", "kramfors", "kristianstad",
+    "kristinehamn", "krokom", "kumla", "kungsbacka", "kungsör", "kungälv", "kävlinge", "köping",
+    "laholm", "landsbro", "landskrona", "laxå", "lekeberg", "leksand", "lerum", "lessebo",
+    "lidingö", "lilla edet", "lindesberg", "linköping", "ljungby", "ljusdal", "ljusnarsberg",
+    "lomma", "ludvika", "luleå", "lund", "lycksele", "lysekil", "malå", "malmö", "malung-sälen",
+    "marie­stad", "mark", "markaryd", "mellerud", "mjölby", "mora", "motala", "mullsjö", "munkedal",
+    "munkfors", "mölndal", "mönsterås", "mörbylånga", "nacka", "nora", "norberg", "nordanstig",
+    "nordmaling", "norrköping", "norrtälje", "nybro", "nykvarn", "nyköping", "nynäshamn",
+    "ockelbo", "olofström", "orust", "osby", "oskarshamn", "osteråker", "ostersund", "osthammar",
+    "oxelösund", "pajala", "partille", "perstorp", "piteå", "ragunda", "robertsfors", "ronneby",
+    "rättvik", "sala", "salem", "sandviken", "sigtuna", "simrishamn", "sjöbo", "skara",
+    "skellefteå", "skinnskatteberg", "skurup", "skövde", "sollefteå", "solna", "sorsele",
+    "sotenäs", "staffanstorp", "stefan", "stenungsund", "stockholm", "storfors", "storuman",
+    "strängnäs", "strömstad", "ström­sund", "sundbyberg", "sundsvall", "sunne", "surahammar",
+    "svalöv", "svedala", "svensby", "säffle", "sälen", "sävsjö", "söderhamn", "söderköping",
+    "södertälje", "sölvesborg", "tanum", "tibro", "tidaholm", "tierp", "timrå", "tingsryd",
+    "tjörns", "tomelilla", "torsby", "torsås", "tranemo", "tranås", "trelleborg", "trollhättan",
+    "trosa", "tyresö", "täby", "töreboda", "uddevalla", "ulricehamn", "uppsala", "uppvidinge",
+    "vadstena", "vaggeryd", "valdemarsvik", "vallentuna", "vallsta", "vanersborg", "vara",
+    "varberg", "vaxholm", "vetlanda", "vilhelmina", "vindeln", "vingåker", "vårgårda",
+    "vännäs", "värmdö", "värnamo", "västervik", "västerås", "växjö", "ydre", "ystad", "åmål",
+    "ånge", "åre", "årjäng", "åsele", "åstorp", "åtvidaberg", "öckerö", "ödeshög", "örebro",
+    "örkelljunga", "örnsköldsvik", "östersund", "österåker", "östhammar", "överkalix", "övertorneå",
+    # vanliga tilläggsord i dokument
+    "kommun", "kommunen", "kommunal", "kommunstyrelse", "kommunfullmäktige",
+    "region", "regionen", "landsting", "stadsdelsförvaltning", "förvaltning",
+    "myndighet", "myndigheten", "verksamhet", "organisation"
 }
-# ----------
+}
 
 
-def nfc(path_str: str) -> str:
-    """Normalisera unicode (NFC) för macOS-paths med å/ä/ö etc."""
-    return unicodedata.normalize("NFC", path_str)
+########################################
+# Hjälpfunktioner
+########################################
+
+def read_markdown_dir(dir_path, period_label):
+    """Läs alla .md-filer rekursivt"""
+    docs = []
+    for path in glob.glob(os.path.join(dir_path, "**", "*.md"), recursive=True):
+        try:
+            with open(path, "r", encoding="utf-8", errors="ignore") as f:
+                text = f.read()
+            docs.append({"doc_id": os.path.basename(path), "period": period_label, "text": text})
+        except Exception as e:
+            print(f"⚠️ Misslyckades läsa {path}: {e}")
+    return docs
 
 
-def load_texts_from_folder(folder_path: str) -> Tuple[List[str], List[str]]:
+def clean_text(text):
+    """Rensa text: små bokstäver, ta bort siffror, specialtecken"""
+    text = text.lower()
+    text = re.sub(r"http\S+|www\.\S+", " ", text)
+    text = re.sub(r"\S+@\S+", " ", text)
+    text = re.sub(r"[^a-zåäöéüøæ\s\-]", " ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+
+def get_swe_stopwords():
+    cleaned = set()
+    for w in SWEDISH_STOPWORDS:
+        w_clean = clean_text(w)
+        for part in w_clean.split():
+            if len(part) > 1:
+                cleaned.add(part)
+    return cleaned
+
+
+def embed_documents(texts):
+    """Generera embeddings med svensk BERT"""
+    from sentence_transformers import SentenceTransformer
+    model = SentenceTransformer("KBLab/sentence-bert-swedish-cased")
+    return model.encode(texts, batch_size=32, show_progress_bar=True, convert_to_numpy=True)
+
+
+def run_kmeans(embeddings, k=6):
+    kmeans = KMeans(n_clusters=k, n_init=10, random_state=42)
+    labels = kmeans.fit_predict(embeddings)
+    return kmeans, labels
+
+
+def top_terms_for_cluster(texts, stop_words, top_n=8):
+    """Hitta typiska ord för varje kluster.
+
+    - Säkerställ att stop_words är i ett format som scikit-learn accepterar (lista/None/str).
+    - Faller tillbaka till enkel frekvensräkning om TF‑IDF inte går att beräkna
+      (t.ex. tomt vokabulär).
     """
-    Läser alla .md-filer i given mapp (ej rekursivt),
-    returnerar (filnamn, textinnehåll).
-    """
-    folder = Path(nfc(folder_path))
-    if not folder.exists():
-        raise FileNotFoundError(f"Mapp finns inte: {folder}")
+    # Säkerställ lista av strängar utan tomma
+    if hasattr(texts, "tolist"):
+        texts = texts.tolist()
+    texts = [t for t in texts if isinstance(t, str) and t.strip()]
+    if not texts:
+        return []
 
-    texts, files = [], []
-    for f in sorted(folder.iterdir()):
-        if f.is_file() and f.suffix.lower() == ".md":
-            try:
-                content = f.read_text(encoding="utf-8", errors="ignore")
-            except UnicodeDecodeError:
-                content = f.read_text(encoding="latin-1", errors="ignore")
-            texts.append(content)
-            files.append(f.name)
-    return files, texts
-
-
-def simple_clean(text: str) -> str:
-    """
-    Enkel städning av markdown/URL/nummer för mer stabil TF-IDF.
-    Behåll svenska tecken, ta bort kodblock, länkar och överflödigt brus.
-    """
-    if not isinstance(text, str):
-        return ""
-    t = text
-
-    # Ta bort kodblock ```...```
-    t = re.sub(r"```.*?```", " ", t, flags=re.DOTALL)
-
-    # Ta bort inline-code `...`
-    t = re.sub(r"`[^`]+`", " ", t)
-
-    # Ta bort URLs
-    t = re.sub(r"https?://\S+|www\.\S+", " ", t)
-
-    # Ta bort markdown-headings/listmarkörer
-    t = re.sub(r"^#+\s*", " ", t, flags=re.MULTILINE)
-    t = re.sub(r"^\s*[-*+]\s+", " ", t, flags=re.MULTILINE)
-
-    # Siffror -> mellanslag
-    t = re.sub(r"\d+", " ", t)
-
-    # Specialtecken -> mellanslag
-    t = re.sub(r"[^\wåäöÅÄÖ\- ]+", " ", t)
-
-    # Komprimera whitespace
-    t = re.sub(r"\s+", " ", t, flags=re.MULTILINE).strip()
-    return t
-
-
-def build_vectorizer(max_features: int, ngram_range: Tuple[int, int]) -> TfidfVectorizer:
-    """Skapa TF-IDF vectorizer med svensk stopwords-lista."""
-    return TfidfVectorizer(
-        lowercase=True,
-        token_pattern=r"(?u)\b[\wåäöÅÄÖ\-]{2,}\b",
-        stop_words=SWEDISH_STOPWORDS,
-        max_features=max_features,
-        ngram_range=ngram_range,
-        dtype=np.float32
-    )
-
-
-def top_terms_from_centers(centers: np.ndarray, terms: np.ndarray, topk: int = 15) -> List[List[str]]:
-    """Hämta topp-ord för varje klustercenter."""
-    out = []
-    for i in range(centers.shape[0]):
-        idx = np.argsort(centers[i])[::-1][:topk]
-        out.append(terms[idx].tolist())
-    return out
-
-
-def tsne_plot(X_sparse, labels, title, colors=None, out_path: Path = None, random_state: int = 42):
-    """
-    Gör en stabil 2D-projektion med SVD (50D) -> t-SNE (2D) och ritar scatter.
-    X_sparse: scipy-sparse matrix
-    labels: array-lika etiketter (kluster-id eller period)
-    """
-    # 1) SVD ned till 50D för fart/stabilitet
-    svd = TruncatedSVD(n_components=50, random_state=random_state)
-    X_50 = svd.fit_transform(X_sparse)
-
-    # 2) t-SNE
-    tsne = TSNE(n_components=2, init="pca", learning_rate="auto",
-                random_state=random_state, perplexity=30)
-    X_2d = tsne.fit_transform(X_50)
-
-    # 3) Plot
-    plt.figure(figsize=(10, 7))
-    labels = np.array(labels)
-
-    if colors is None:
-        # generera enkla färger
-        uniq = np.unique(labels)
-        cmap = plt.cm.get_cmap("tab10", len(uniq))
-        color_map = {lab: cmap(i) for i, lab in enumerate(uniq)}
+    # SkLearn kräver list/None/str, inte set/tuple
+    if isinstance(stop_words, (set, tuple)):
+        stop_words_sklearn = sorted(list(stop_words))
     else:
-        color_map = colors
+        stop_words_sklearn = stop_words
 
-    for lab in np.unique(labels):
-        pts = X_2d[labels == lab]
-        plt.scatter(pts[:, 0], pts[:, 1], s=18, alpha=0.7, label=str(lab),
-                    c=[color_map[lab]])
-    plt.title(title)
-    plt.legend(loc="best", markerscale=1.2, frameon=False)
+    try:
+        vec = TfidfVectorizer(
+            stop_words=stop_words_sklearn, max_features=3000, ngram_range=(1, 2)
+        )
+        X = vec.fit_transform(texts)
+        if X.shape[1] == 0:
+            return []
+        mean_scores = np.asarray(X.mean(axis=0)).ravel()
+        vocab = vec.get_feature_names_out()
+        order = np.argsort(mean_scores)[::-1][:top_n]
+        return [vocab[i] for i in order]
+    except Exception:
+        # Fallback: enkel ordfrekvens utan stopwords
+        stop_set = set(stop_words_sklearn) if stop_words_sklearn else set()
+        c = Counter()
+        for t in texts:
+            for w in t.split():
+                if w not in stop_set and len(w) > 2:
+                    c[w] += 1
+        return [w for w, _ in c.most_common(top_n)]
+
+
+def summarize_clusters(df, labels, stop_words):
+    """Sammanfatta kluster och deras förändring mellan före/efter"""
+    df["cluster"] = labels
+    n_before = (df["period"] == "before").sum()
+    n_after = (df["period"] == "after").sum()
+
+    summaries = []
+    for c in sorted(df["cluster"].unique()):
+        sub = df[df["cluster"] == c]
+        sub_before = sub[sub["period"] == "before"]
+        sub_after = sub[sub["period"] == "after"]
+
+        share_before = len(sub_before) / n_before if n_before > 0 else 0
+        share_after = len(sub_after) / n_after if n_after > 0 else 0
+        change = share_after - share_before
+
+        top_terms = top_terms_for_cluster(sub["clean_text"], stop_words)
+        summaries.append({
+            "cluster": c,
+            "top_terms": ", ".join(top_terms),
+            "share_before": share_before,
+            "share_after": share_after,
+            "share_change_after_minus_before": change
+        })
+
+    return df, pd.DataFrame(summaries)
+
+
+def pca_scatter_plot(embeddings, df, summaries, out_path):
+    """Visualisera dokumentkluster med temaord"""
+    pca = PCA(n_components=2, random_state=42)
+    coords = pca.fit_transform(embeddings)
+    df_plot = pd.DataFrame({
+        "x": coords[:, 0],
+        "y": coords[:, 1],
+        "cluster": df["cluster"]
+    })
+
+    plt.figure(figsize=(10, 8))
+    colors = plt.cm.get_cmap("tab10", len(summaries))
+
+    for i, row in summaries.iterrows():
+        sub = df_plot[df_plot["cluster"] == row["cluster"]]
+        plt.scatter(sub["x"], sub["y"], color=colors(i), label=f"Kluster {row['cluster']}")
+        plt.text(sub["x"].mean(), sub["y"].mean(),
+                 f"{row['cluster']}: {row['top_terms'].split(',')[0]}",
+                 fontsize=9,
+                 bbox=dict(facecolor="white", alpha=0.8, edgecolor="black", boxstyle="round,pad=0.3"))
+
+    plt.title("Dokumentkluster och temaord (PCA på svenska embeddings)")
+    plt.xlabel("PCA 1")
+    plt.ylabel("PCA 2")
+    plt.legend()
     plt.tight_layout()
-    if out_path:
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-        plt.savefig(out_path, dpi=160)
+    plt.savefig(out_path, dpi=300)
     plt.close()
 
 
-def compute_tfidf_diff(X: np.ndarray, terms: np.ndarray, period: pd.Series,
-                       topk: int = 40) -> pd.DataFrame:
-    """
-    Beräknar genomsnittlig TF-IDF per period och skillnad (efter - före).
-    Returnerar en DataFrame med topp ökningar och minskningar.
-    """
-    # Indeces
-    mask_after = (period == "efter").values
-    mask_before = (period == "före").values
+def compute_word_shift(df, stop_words, out_csv_path, top_n=100):
+    """Beräkna ord som ökat mest efter 2023"""
+    before_texts = df[df["period"] == "before"]["clean_text"].tolist()
+    after_texts = df[df["period"] == "after"]["clean_text"].tolist()
 
-    # Medel per term
-    mean_after = X[mask_after].mean(axis=0)
-    mean_before = X[mask_before].mean(axis=0)
+    def count_words(texts):
+        c = Counter()
+        for t in texts:
+            for w in t.split():
+                if w not in stop_words and len(w) > 2:
+                    c[w] += 1
+        return c
 
-    # Om X är sparse matrix
-    if not isinstance(mean_after, np.ndarray):
-        mean_after = np.asarray(mean_after).ravel()
-        mean_before = np.asarray(mean_before).ravel()
+    before_counts = count_words(before_texts)
+    after_counts = count_words(after_texts)
 
-    diff = mean_after - mean_before  # positivt => vanligare efter
-    order = np.argsort(diff)
+    total_before = sum(before_counts.values()) or 1
+    total_after = sum(after_counts.values()) or 1
 
-    top_down = order[:topk]   # mest minskat (negativt)
-    top_up = order[::-1][:topk]  # mest ökat (positivt)
+    before_freq = {w: before_counts[w] / total_before for w in before_counts}
+    after_freq = {w: after_counts[w] / total_after for w in after_counts}
 
-    rows = []
-    for idx in top_up:
-        rows.append({"term": terms[idx], "diff_after_minus_before": float(diff[idx]), "direction": "up_after"})
-    for idx in top_down:
-        rows.append({"term": terms[idx], "diff_after_minus_before": float(diff[idx]), "direction": "down_after"})
-    return pd.DataFrame(rows)
+    all_words = set(before_counts.keys()) | set(after_counts.keys())
+    data = []
+    for w in all_words:
+        fb, fa = before_freq.get(w, 0.0), after_freq.get(w, 0.0)
+        diff = fa - fb
+        data.append({"word": w, "freq_before": fb, "freq_after": fa, "increase": diff})
 
+    df_shift = pd.DataFrame(sorted(data, key=lambda x: x["increase"], reverse=True)[:top_n])
+    df_shift.to_csv(out_csv_path, index=False, encoding="utf-8")
+
+
+########################################
+# main()
+########################################
 
 def main():
-    parser = argparse.ArgumentParser(description="Klustring och ordanvändnings-analys (Före/Efter).")
-    parser.add_argument("--before_dir", type=str, default="data/Före Markdown", help="Mapp med markdown före.")
-    parser.add_argument("--after_dir", type=str, default="data/Efter Markdown", help="Mapp med markdown efter.")
-    parser.add_argument("--out_dir", type=str, default="data/analysis_results", help="Output-katalog.")
-    parser.add_argument("--clusters", type=int, default=6, help="Antal kluster (KMeans).")
-    parser.add_argument("--max_features", type=int, default=3000, help="Max antal TF-IDF-funktioner.")
-    parser.add_argument("--ngrams", nargs=2, type=int, default=[1, 2], help="ngram-range, ex: --ngrams 1 2")
-    parser.add_argument("--top_terms", type=int, default=15, help="Antal toppord per kluster.")
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--before_dir", required=True)
+    parser.add_argument("--after_dir", required=True)
+    parser.add_argument("--out_dir", required=True)
+    parser.add_argument("--clusters", type=int, default=6)
     args = parser.parse_args()
 
-    out_dir = Path(nfc(args.out_dir))
-    out_dir.mkdir(parents=True, exist_ok=True)
+    os.makedirs(args.out_dir, exist_ok=True)
 
-    # 1) Ladda data
-    print("Läser in markdown...")
-    before_files, before_texts = load_texts_from_folder(args.before_dir)
-    after_files, after_texts = load_texts_from_folder(args.after_dir)
+    stop_words = get_swe_stopwords()
 
-    if len(before_texts) == 0 and len(after_texts) == 0:
-        raise RuntimeError("Hittade inga .md-filer i angivna mappar.")
+    print("1) Läser och städar text ...")
+    docs_before = read_markdown_dir(args.before_dir, "before")
+    docs_after = read_markdown_dir(args.after_dir, "after")
+    df = pd.DataFrame(docs_before + docs_after)
+    df["clean_text"] = df["text"].apply(clean_text)
+    print(f"   Totalt {len(df)} dokument")
 
-    df_before = pd.DataFrame({"filename": before_files, "text": before_texts, "period": "före"})
-    df_after = pd.DataFrame({"filename": after_files, "text": after_texts, "period": "efter"})
-    df = pd.concat([df_before, df_after], ignore_index=True)
+    print("2) Bygger embeddings ...")
+    embeddings = embed_documents(df["clean_text"].tolist())
 
-    # 2) Rensa text lätt
-    print("Städar text...")
-    df["clean_text"] = df["text"].map(simple_clean)
+    print("3) Klustrar dokument ...")
+    kmeans, labels = run_kmeans(embeddings, args.clusters)
 
-    # 3) TF-IDF
-    print("TF-IDF beräkning...")
-    ngram_range = (int(args.ngrams[0]), int(args.ngrams[1]))
-    vectorizer = build_vectorizer(max_features=args.max_features, ngram_range=ngram_range)
-    X = vectorizer.fit_transform(df["clean_text"])
-    terms = vectorizer.get_feature_names_out()
+    print("4) Summerar kluster ...")
+    df, summaries = summarize_clusters(df, labels, stop_words)
+    cluster_shift_path = os.path.join(args.out_dir, "cluster_shift.csv")
+    summaries.to_csv(cluster_shift_path, index=False, encoding="utf-8")
 
-    # 4) KMeans-klustring
-    print(f"Klustrar dokument (KMeans, k={args.clusters})...")
-    kmeans = KMeans(n_clusters=args.clusters, random_state=42, n_init=10)
-    labels = kmeans.fit_predict(X)
+    print("5) Visualiserar kluster ...")
+    scatter_path = os.path.join(args.out_dir, "cluster_scatter.png")
+    pca_scatter_plot(embeddings, df, summaries, scatter_path)
 
-    df["cluster"] = labels
+    print("6) Räknar ord som ökat efter 2023 ...")
+    word_shift_path = os.path.join(args.out_dir, "word_shift.csv")
+    compute_word_shift(df, stop_words, word_shift_path)
 
-    # 5) Topptermer per kluster
-    print("Tar ut topptermer per kluster...")
-    if hasattr(kmeans, "cluster_centers_"):
-        centers = kmeans.cluster_centers_
-    else:
-        # för äldre sklearn-versioner: approximera via medel av medlemmar
-        centers = np.zeros((args.clusters, X.shape[1]), dtype=np.float32)
-        for k in range(args.clusters):
-            members = X[df["cluster"] == k]
-            if members.shape[0] > 0:
-                centers[k] = members.mean(axis=0).A1
-
-    top_lists = top_terms_from_centers(centers, terms, topk=args.top_terms)
-    rows = []
-    for k, words in enumerate(top_lists):
-        for rank, w in enumerate(words, 1):
-            rows.append({"cluster": k, "rank": rank, "term": w})
-    df_top = pd.DataFrame(rows)
-
-    # 6) Fördelning per period i varje kluster
-    dist = df.groupby(["cluster", "period"]).size().reset_index(name="count")
-    dist_pivot = dist.pivot(index="cluster", columns="period", values="count").fillna(0).astype(int).reset_index()
-
-    # 7) TF-IDF-differenser (efter - före)
-    print("Beräknar ord som ökat/minskat över tid...")
-    df_diff = compute_tfidf_diff(X, terms, df["period"], topk=40)
-
-    # 8) Visualiseringar (t-SNE)
-    print("Gör 2D-visualiseringar (t-SNE)...")
-    tsne_plot(
-        X, labels=df["cluster"].values,
-        title="Dokumentkluster (KMeans)",
-        out_path=out_dir / "tsne_clusters.png"
-    )
-    tsne_plot(
-        X, labels=df["period"].values,
-        title="Dokument per period (före/efter)",
-        out_path=out_dir / "tsne_periods.png"
-    )
-
-    # 9) Spara resultat
-    print("Sparar resultat...")
-    df_out = df[["filename", "period", "cluster"]].copy()
-    df_out.to_csv(out_dir / "docs_with_clusters.csv", index=False, encoding="utf-8")
-    df_top.to_csv(out_dir / "cluster_top_terms.csv", index=False, encoding="utf-8")
-    dist_pivot.to_csv(out_dir / "cluster_period_distribution.csv", index=False, encoding="utf-8")
-    df_diff.to_csv(out_dir / "tfidf_diff_terms.csv", index=False, encoding="utf-8")
-
-    # Spara även enklare JSON-sammanfattning
-    summary = {
-        "n_docs": int(df.shape[0]),
-        "n_before": int((df["period"] == "före").sum()),
-        "n_after": int((df["period"] == "efter").sum()),
-        "n_clusters": int(args.clusters),
-        "max_features": int(args.max_features),
-        "ngram_range": list(ngram_range),
-        "outputs": {
-            "docs_with_clusters": str(out_dir / "docs_with_clusters.csv"),
-            "cluster_top_terms": str(out_dir / "cluster_top_terms.csv"),
-            "cluster_period_distribution": str(out_dir / "cluster_period_distribution.csv"),
-            "tfidf_diff_terms": str(out_dir / "tfidf_diff_terms.csv"),
-            "tsne_clusters_png": str(out_dir / "tsne_clusters.png"),
-            "tsne_periods_png": str(out_dir / "tsne_periods.png"),
-        }
-    }
-    (out_dir / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
-
-    print("\n✅ Klart!")
-    print(f"- Dokument+kluster: {summary['outputs']['docs_with_clusters']}")
-    print(f"- Topptermer/kluster: {summary['outputs']['cluster_top_terms']}")
-    print(f"- Fördelning period/kluster: {summary['outputs']['cluster_period_distribution']}")
-    print(f"- Ord som ökat/minskat: {summary['outputs']['tfidf_diff_terms']}")
-    print(f"- Figurer: tsne_clusters.png, tsne_periods.png i {out_dir}")
+    print("\n✅ Klart! Resultat:")
+    print(f"- {scatter_path}")
+    print(f"- {cluster_shift_path}")
+    print(f"- {word_shift_path}")
 
 
 if __name__ == "__main__":
