@@ -80,7 +80,7 @@ SWEDISH_STOPWORDS = {
     "kommun", "kommunen", "kommunal", "kommunstyrelse", "kommunfullmäktige",
     "region", "regionen", "landsting", "stadsdelsförvaltning", "förvaltning",
     "myndighet", "myndigheten", "verksamhet", "organisation"
-}
+
 }
 
 
