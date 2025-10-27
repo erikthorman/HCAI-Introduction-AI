@@ -6,14 +6,12 @@ import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.feature_extraction.text import CountVectorizer
 
-# Stoppord (svenska) inkl. kommuner/landskap + genitiv-s
+# Stopwords (svenska) inkl. kommuner/landskap + genitiv-s
 import nltk, re, unicodedata
 from nltk.corpus import stopwords
 nltk.download("stopwords", quiet=True)
 SWEDISH_STOPWORDS = set(stopwords.words("swedish"))
 
-# (valfritt) lägg in kommuner/landskap + "s" från din tidigare lista om du vill
-# Här visar jag bara hur du kan hooka in egna stoppord:
 EXTRA_STOPWORDS = {"varav","toverud","utveckl","bengtsfa","gunn","guid","stahl","pris","ocksa","hööra","tjör","unikomfamilj","svalöva","degerfa","årjängas","norrbott", "olofströms","gislaveda","nykvar","emmabod","uppsal","åstorpa","gölisk","svedal","älmhult","itd","munkfor","munkfa","sydnärke","kungsöra","sandvik","årjänga","österåkers","ska", "stockholmarna", "kristianstads","karlstads","kommer", "kommun", "kommuner", "kommunens", "emmaboda", "vännäs", "sätt", "rätt", "genom", "kommunkoncernen", "samt", "image" ,"kr", "nok","pa","mom","ekerö","älmhults","lsa","göliska","eblomlådan","stockholmarnas","sydnärkes","säby", "rönninge","norsjö","degerfors","säby","torg"
     # exempel: "värmland","värmlands","stockholm","stockholms", ...
 }
@@ -74,17 +72,17 @@ for name in SWEDISH_PROVINCES:
 SWEDISH_STOPWORDS.update(COMMUNE_STOPWORDS)
 SWEDISH_STOPWORDS.update(PROVINCE_STOPWORDS)
 
-# --- Sökvärdar ---
+# --- Search paths ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 BEFORE_GLOB = os.path.join(BASE_DIR, "data", "Före Markdown", "*.md")
 AFTER_GLOB  = os.path.join(BASE_DIR, "data", "Efter Markdown", "*.md")
 
 def normalize_text(s: str) -> str:
-    # Unicode-normalisera och rensa dolda tecken
+    # Unicode-normalizing and cleaning hidden tokens:
     return unicodedata.normalize("NFKC", s)
 
 
-# --- NYTT: Markdown-aware cleaning + (optional) lemmatization ---
+# Markdown-aware cleaning + (optional) lemmatization ---
 def strip_markdown(text: str) -> str:
     """Remove frontmatter, code blocks, markdown markup and URLs but keep link text."""
     # YAML frontmatter
