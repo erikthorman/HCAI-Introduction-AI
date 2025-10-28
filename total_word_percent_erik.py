@@ -157,7 +157,7 @@ def compute_word_change(df, stop_words, top_n):
         freq_before = before_freq.get(word, 0.0)
         freq_after = after_freq.get(word, 0.0)
         percent_point_change = (freq_after - freq_before) * 100
-        relative_change = ((freq_after - freq_before) / freq_before * 100) if freq_before > 0 else None
+        relative_change = ((freq_after - freq_before) / freq_before * 100) if freq_before > 0 else float("nan")
         rows.append({
             "word": word,
             "freq_before_percent": freq_before * 100,
@@ -166,9 +166,7 @@ def compute_word_change(df, stop_words, top_n):
             "relative_percent_change": relative_change
         })
 
-    df_change = pd.DataFrame(rows)
-    df_change = df_change.sort_values("percent_point_change", ascending=False).head(top_n).reset_index(drop=True)
-    return df_change
+    return pd.DataFrame(rows)
 
 
 def parse_args():
@@ -200,18 +198,34 @@ def main():
     word_change_df = compute_word_change(df, stop_words, args.top_n)
 
     if args.out_csv:
-        out_path = args.out_csv
+        main_out_path = args.out_csv
+        base, ext = os.path.splitext(args.out_csv)
+        relative_out_path = f"{base}_relative{ext or '.csv'}"
     else:
-        out_path = os.path.join(args.out_dir, "word_shift.csv")
+        main_out_path = os.path.join(args.out_dir, "word_shift.csv")
+        relative_out_path = os.path.join(args.out_dir, "word_shift_relative.csv")
 
-    out_dir = os.path.dirname(out_path)
-    if out_dir:
-        os.makedirs(out_dir, exist_ok=True)
+    for path in {main_out_path, relative_out_path}:
+        out_dir = os.path.dirname(path)
+        if out_dir:
+            os.makedirs(out_dir, exist_ok=True)
 
-    word_change_df.to_csv(out_path, index=False, encoding="utf-8")
+    primary_df = word_change_df.sort_values(
+        "percent_point_change",
+        ascending=False
+    ).head(args.top_n).reset_index(drop=True)
+    relative_df = word_change_df.sort_values(
+        "relative_percent_change",
+        ascending=False,
+        na_position="last"
+    ).head(args.top_n).reset_index(drop=True)
+
+    primary_df.to_csv(main_out_path, index=False, encoding="utf-8")
+    relative_df.to_csv(relative_out_path, index=False, encoding="utf-8")
 
     print("\n✅ Klart! Resultat:")
-    print(f"- {out_path}")
+    print(f"- {main_out_path}")
+    print(f"- {relative_out_path}")
 
 
 if __name__ == "__main__":
