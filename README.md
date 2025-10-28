@@ -17,4 +17,4 @@ pip install -r requirements.txt
 
 
 
-python clustering_erik.py --before_dir "data/Före Markdown" --after_dir "data/Efter Markdown" --out_dir "data/analysis_results"
+python total_word_percent_erik.py --before_dir "data/Före Markdown" --after_dir "data/Efter Markdown" --out_dir "data/analysis_results"
