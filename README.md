@@ -13,3 +13,8 @@ python -m venv .venv
 pip install -U pip
 pip install docling docling-core tqdm pandas
 pip install -r requirements.txt
+
+
+
+
+python clustering_erik.py --before_dir "data/Före Markdown" --after_dir "data/Efter Markdown" --out_dir "data/analysis_results"
