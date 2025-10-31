@@ -3,6 +3,10 @@ docling-core==2.49.0
 tqdm==4.67.1
 pandas==2.3.3
 numpy
+unicodedata
+os
+glob
+pathlib
 matplotlib
 seaborn
 scikit-learn
