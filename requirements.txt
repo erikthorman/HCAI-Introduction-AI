@@ -7,9 +7,9 @@ matplotlib
 nltk
 re
 unicodedata
-wordcloud
+
 numpy
-scikit-learn
+
 pathlib
 os
 glob
