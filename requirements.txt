@@ -5,3 +5,11 @@ tqdm==4.67.1
 pandas==2.3.3
 matplotlib
 nltk
+re
+unicodedata
+numpy
+sklearn
+pathlib
+os
+glob
+spacy
