@@ -6,6 +6,7 @@ import seaborn as sns
 import string
 import nltk
 from nltk.corpus import stopwords
+from wordcloud import WordCloud
 
 # --- Stopwords från analysis_stine.py ---
 nltk.download("stopwords", quiet=True)
@@ -18,7 +19,7 @@ EXTRA_STOPWORDS = {
     "kungsöra","sandvik","årjänga","österåkers","ska","stockholmarna","kristianstads","karlstads",
     "kommer","kommun","kommuner","kommunens","emmaboda","vännäs","sätt","rätt","genom","kommunkoncernen",
     "samt","image","kr","nok","pa","mom","ekerö","älmhults","lsa","göliska","eblomlådan","stockholmarnas",
-    "sydnärkes","säby","rönninge","norsjö","degerfors","säby","torg"
+    "sydnärkes","säby","rönninge","norsjö","degerfors","säby","torg", "www"
 }
 SWEDISH_STOPWORDS.update(EXTRA_STOPWORDS)
 
@@ -63,7 +64,7 @@ SWEDISH_PROVINCES = {
     "södermanland","uppland","värmland","västerbotten","västergötland","ångermanland","öland","östergötland"
 }
 
-# --- Lägg till kommuner, deras genitivformer och landskap till stopporden ---
+# --- Lägg till kommuner och landskap till stopwords ---
 COMMUNE_STOPWORDS = set()
 for name in SWEDISH_MUNICIPALITIES:
     COMMUNE_STOPWORDS.add(name)
@@ -77,8 +78,9 @@ for name in SWEDISH_PROVINCES:
 SWEDISH_STOPWORDS.update(COMMUNE_STOPWORDS)
 SWEDISH_STOPWORDS.update(PROVINCE_STOPWORDS)
 
+
+# --- Function definitions ---
 def read_markdown_files(directory):
-    """Läser in alla markdown-filer från en katalog."""
     documents = []
     for filename in os.listdir(directory):
         if filename.endswith('.md'):
@@ -86,169 +88,127 @@ def read_markdown_files(directory):
                 documents.append(file.read())
     return documents
 
-def normalize_lemma(word):
-    """Grundform-normalisering för svenska ord."""
-    word = word.strip().lower()
-    
-    # Vanliga ändelser för substantiv
-    if len(word) > 6 and word.endswith('ningen'):
-        return word[:-6]
-    if len(word) > 5 and word.endswith('ning'):
-        return word[:-4]
-    if len(word) > 4 and word.endswith('en'):
-        return word[:-2]
-    if len(word) > 3 and word.endswith('n'):
-        return word[:-1]
-        
-    return word
-
 def preprocess_text(text):
-    """Förbehandlar text: tar bort skiljetecken, konverterar till lowercase och tar bort stopwords."""
     import re
     import unicodedata
-
-    # Normalisera text (unicode och gemener)
     text = unicodedata.normalize("NFKC", text.lower())
-
-    # Ta bort markdown och länkar
     text = re.sub(r"```[\s\S]*?```", " ", text)
     text = re.sub(r"\[([^\]]+)\]\([^\)]+\)", r"\1", text)
     text = re.sub(r"https?://\S+", " ", text)
-
-    # Ta bort skiljetecken och siffror
     text = re.sub(r"[^a-zåäö\s]", " ", text)
     text = re.sub(r"\s+", " ", text).strip()
-
-    # Dela upp i ord och normalisera
     words = text.split()
-    normalized = [normalize_lemma(w) for w in words]
-
-    # Filtrera bort stoppord
-    tokens = [w for w in normalized if w not in SWEDISH_STOPWORDS]
-
+    tokens = [w for w in words if w not in SWEDISH_STOPWORDS]
     return tokens
 
-
 def calculate_birst(documents):
-    """Beräknar BIRST term frequency för varje ord."""
-    print("Börjar beräkna BIRST...")
-    
-    # Räkna total frekvens för alla ord i alla dokument
+    print("Calculating BIRST scores...")
     all_words = []
     for doc in documents:
         words = preprocess_text(doc)
         all_words.extend(words)
-        if "omställning" in words or "omställningen" in words:
-            print(f"Hittade 'omställning' relaterade ord i dokument. Normaliserade ord:", 
-                  [w for w in words if "omställ" in w])
-    
     total_freq = Counter(all_words)
-    print("\nVanligaste orden:", total_freq.most_common(10))
-    
-    # Beräkna BIRST för varje dokument
     document_birst = []
     for i, doc in enumerate(documents):
-        print(f"\rBearbetar dokument {i+1}/{len(documents)}", end="")
         words = preprocess_text(doc)
         doc_freq = Counter(words)
-        
-        # Beräkna BIRST för varje ord i dokumentet
         doc_birst = {}
         doc_len = len(words)
         for word, freq in doc_freq.items():
-            # BIRST = (ordets frekvens i dokumentet / dokumentets längd) * total frekvens för ordet
             birst = (freq / doc_len) * total_freq[word]
             doc_birst[word] = birst
-        
         document_birst.append(doc_birst)
-    
-    print("\nBIRST-beräkning klar!")
+    print("BIRST calculation completed!")
     return document_birst
 
+def merge_words_in_df(df, merge_dict):
+    df = df.copy()
+    df['Word'] = df['Word'].apply(lambda w: merge_dict.get(w, w))
+    df = df.groupby('Word', as_index=False)['BIRST_Score'].sum()
+    return df
+
+def save_birst_visualizations(df_fore, df_after, base_dir, top_n=30):
+    merged = pd.merge(df_fore, df_after, on="Word", suffixes=("_Before", "_After"))
+    merged['BIRST_Diff'] = merged['BIRST_Score_After'] - merged['BIRST_Score_Before']
+    merged['Total_BIRST'] = merged['BIRST_Score_After'] + merged['BIRST_Score_Before']
+
+    # --- HEATMAP: Words with biggest change ---
+    top_words = merged.nlargest(top_n, 'BIRST_Diff')['Word']
+
+    # Tvinga heatmap_df att följa samma ordning som top_words
+    heatmap_df = merged.loc[merged['Word'].isin(top_words)]
+    heatmap_df = heatmap_df.set_index('Word')[['BIRST_Score_Before', 'BIRST_Score_After']]
+    heatmap_df = heatmap_df.loc[top_words]  # <-- behåller top_words-ordningen
+
+    plt.figure(figsize=(12,10))
+    sns.heatmap(heatmap_df, annot=True, fmt=".2f", cmap='coolwarm')
+    plt.title(f"Top {top_n} Words with Largest Change in BIRST Score", fontsize=14, pad=10)
+    plt.xlabel("Time Period")
+    plt.ylabel("Word")
+    heatmap_path = os.path.join(base_dir, 'birst_top_words_heatmap.png')
+    plt.savefig(heatmap_path, bbox_inches='tight')
+    plt.close()
+
+
+    # --- BAR CHART: Words with highest BIRST After 2023 ---
+    top_after = df_after.nlargest(top_n, 'BIRST_Score')
+    plt.figure(figsize=(12,8))
+    sns.barplot(data=top_after, x='BIRST_Score', y='Word', palette='viridis')
+    plt.title(f"Top {top_n} Words with Highest BIRST Score (After 2023)", fontsize=14, pad=10)
+    plt.xlabel("BIRST Score (After 2023)")
+    plt.ylabel("Word")
+    bar_path = os.path.join(base_dir, 'birst_top_after_barchart.png')
+    plt.savefig(bar_path, bbox_inches='tight')
+    plt.close()
+
+    print(f"Visualizations saved as PNG:\n- {heatmap_path}\n- {bar_path}")
+
+# --- Main ---
 def main():
-    print("Startar analys...")
-    
-    # Läs in dokument från både före och efter mapparna med absoluta sökvägar
     base_dir = os.path.dirname(os.path.abspath(__file__))
     fore_path = os.path.join(base_dir, "data", "Före Markdown")
-    efter_path = os.path.join(base_dir, "data", "Efter Markdown")
-    
-    print(f"Läser dokument från:\n- {fore_path}\n- {efter_path}")
+    after_path = os.path.join(base_dir, "data", "Efter Markdown")
+
     fore_docs = read_markdown_files(fore_path)
-    efter_docs = read_markdown_files(efter_path)
-    print(f"Läste {len(fore_docs)} före-dokument och {len(efter_docs)} efter-dokument")
-    
-    # Beräkna BIRST för båda dokumentsamlingarna
-    print("\nBeräknar BIRST för före-dokument...")
+    after_docs = read_markdown_files(after_path)
+
     fore_birst = calculate_birst(fore_docs)
-    print("\nBeräknar BIRST för efter-dokument...")
-    efter_birst = calculate_birst(efter_docs)
-    
-    # Kombinera BIRST-värden för alla dokument i varje samling
-    print("\nKombinerar BIRST-värden...")
+    after_birst = calculate_birst(after_docs)
+
     combined_fore_birst = {}
     for doc_birst in fore_birst:
         for word, value in doc_birst.items():
             combined_fore_birst[word] = combined_fore_birst.get(word, 0) + value
 
-    combined_efter_birst = {}
-    for doc_birst in efter_birst:
+    combined_after_birst = {}
+    for doc_birst in after_birst:
         for word, value in doc_birst.items():
-            combined_efter_birst[word] = combined_efter_birst.get(word, 0) + value
-    
-    # Skapa DataFrames
-    print("\nSkapar DataFrames och plottar...")
+            combined_after_birst[word] = combined_after_birst.get(word, 0) + value
+
     df_fore = pd.DataFrame(list(combined_fore_birst.items()), columns=['Word', 'BIRST_Score'])
-    df_fore['Category'] = 'Före'
-    df_efter = pd.DataFrame(list(combined_efter_birst.items()), columns=['Word', 'BIRST_Score'])
-    df_efter['Category'] = 'Efter'
-    
-    # Spara till CSV för detaljerad analys
-    df_all = pd.concat([df_fore, df_efter])
-    csv_path = os.path.join(base_dir, "birst_results.csv")
-    df_all.to_csv(csv_path, index=False, encoding='utf-8')
-    print(f"\nDetaljer sparade till: {csv_path}")
+    df_fore['Category'] = 'Before'
+    df_after = pd.DataFrame(list(combined_after_birst.items()), columns=['Word', 'BIRST_Score'])
+    df_after['Category'] = 'After'
 
-    # --- 🔹 1. Skillnader mellan före och efter ---
-    df_diff = (
-        df_efter.set_index("Word")["BIRST_Score"]
-        - df_fore.set_index("Word")["BIRST_Score"]
-    )
+    # --- Manuella sammanslagningar ---
+    MERGE_WORDS = {
+        "socialförvaltningen": "socialförvaltning",
+        "socialförvaltningens": "socialförvaltning",
+        "omställningen" : "omställning",
+        # fler ord kan läggas till här
+    }
+    df_fore = merge_words_in_df(df_fore, MERGE_WORDS)
+    df_after = merge_words_in_df(df_after, MERGE_WORDS)
+
+    df_all = pd.concat([df_fore, df_after])
+    df_all.to_csv(os.path.join(base_dir, "birst_results.csv"), index=False, encoding='utf-8')
+
+    df_diff = df_after.set_index("Word")["BIRST_Score"] - df_fore.set_index("Word")["BIRST_Score"]
     df_diff = df_diff.sort_values(ascending=False)
-    
-    # Skriv ut topp 20 ökningar
-    print("\nTopp 20 ord som ökade mest:")
-    for word, score in df_diff.head(20).items():
-        print(f"{word:<20} {score:>8.2f}")
-    
-    df_diff = df_diff.head(20).reset_index()
-    
-    plt.figure(figsize=(12, 6))
-    sns.barplot(data=df_diff, x='Word', y='BIRST_Score', color='skyblue')
-    plt.xticks(rotation=45, ha='right')
-    plt.title('Ord som ökade mest i BIRST-score efter förändringen')
-    plt.tight_layout()
-    plot_path = os.path.join(base_dir, "birst_diff_top20.png")
-    plt.savefig(plot_path)
-    plt.close()
-    print(f"\nPlott sparad till: {plot_path}")
+    print("\nTop 20 words with the largest increase in BIRST:")
+    print(df_diff.head(20))
 
-    # --- 🔹 2. Separata topp 10 för före och efter ---
-    top_fore = df_fore.nlargest(10, 'BIRST_Score')
-    top_efter = df_efter.nlargest(10, 'BIRST_Score')
-    df_top = pd.concat([top_fore, top_efter])
-
-    plt.figure(figsize=(14, 7))
-    sns.barplot(data=df_top, x='Word', y='BIRST_Score', hue='Category')
-    plt.xticks(rotation=45, ha='right')
-    plt.title('Topp 10 BIRST-ord före och efter')
-    plt.tight_layout()
-    plot_path2 = os.path.join(base_dir, "birst_top10_fore_efter.png")
-    plt.savefig(plot_path2)
-    plt.close()
-    print(f"Plott sparad till: {plot_path2}")
-    
-    print("\nAnalys slutförd!")
+    save_birst_visualizations(df_fore, df_after, base_dir, top_n=30)
 
 if __name__ == "__main__":
     main()
