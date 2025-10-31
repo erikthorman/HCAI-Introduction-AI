@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer
 from sklearn.feature_selection import chi2
 
-# Stopwords (svenska) inkl. kommuner/landskap + genitiv-s
+# Stopwords (svenska) inkcluding names for municipalities and provinces and their genitive forms
 import nltk
 nltk.download("stopwords", quiet=True)
 from nltk.corpus import stopwords
@@ -26,7 +26,7 @@ EXTRA_STOPWORDS = {
 }
 SWEDISH_STOPWORDS.update(EXTRA_STOPWORDS)
 
-# --- Svenska kommuner (statisk lista - kept as provided earlier) ---
+# --- Swedish municipalities (static list)
 SWEDISH_MUNICIPALITIES = {
     "ale","alingsås","alvesta","aneby","arboga","arjeplog","arvidsjaur","arvika","askersund",
     "avesta","bengtsfors","berg","bjurholm","bjuv","boden","bollebygd","bollnäs","borgholm",
@@ -59,15 +59,14 @@ SWEDISH_MUNICIPALITIES = {
     "örkelljunga","östersund","östhammar","östra göinge","överkalix","överums","älvdalen","älvkarleby","åsedal",
     "ås"
 }
-
-# --- Svenska landskap ---
+# --- Swedish provinces (static list)
 SWEDISH_PROVINCES = {
     "blekinge","bohuslän","dalarna","dalsland","gotland","gästrikland","halland","hälsingland",
     "härjedalen","jämtland","lappland","medelpad","norrbotten","närke","skåne","småland",
     "södermanland","uppland","värmland","västerbotten","västergötland","ångermanland","öland","östergötland"
 }
 
-# --- Lägg till kommuner, deras genitivformer och landskap till stopporden ---
+# --- Adding municipalities and provinces to stopwords (including genitive forms) ---
 COMMUNE_STOPWORDS = set()
 for name in SWEDISH_MUNICIPALITIES:
     COMMUNE_STOPWORDS.add(name)
@@ -89,7 +88,6 @@ AFTER_GLOB  = os.path.join(BASE_DIR, "data", "Efter Markdown", "*.md")
 
 def normalize_text(s: str) -> str:
     return unicodedata.normalize("NFKC", s)
-
 
 # Markdown-aware cleaning + (optional) lemmatization
 def strip_markdown(text: str) -> str:
@@ -142,7 +140,7 @@ def preprocess_text(text: str, lemmatize: bool = True) -> str:
 
     return t
 
-
+# Load texts from markdown files
 def load_markdown_texts(path_pattern, period_label, lemmatize=True):
     texts, files, labels = [], [], []
     for filepath in sorted(glob.glob(path_pattern)):
@@ -166,7 +164,7 @@ texts = texts_before + texts_after
 files = files_before + files_after
 periods = labels_before + labels_after
 
-print(f"Totalt {len(texts)} dokument lästa ({len(texts_before)} före, {len(texts_after)} efter).")
+print(f"In total {len(texts)} documents read, ({len(texts_before)} before, {len(texts_after)} after).")
 
 
 def fdr_bh(pvals):
