@@ -1,20 +1,14 @@
 #Instruktioner:
-#Börja med att skapa en virtuell miljö och installera dependencies genom att klistra in följande kodstycke i terminalen:
 
+1. Make sure you are currently in your prefered environment.
+2. Install and update dependencies by copying and pasting the following code into your terminal:
 
-#För Mac IOS
-#installera bibliotek
-pip install -r requirements.txt
-
-#För Windows
-
-python -m venv .venv
-.venv\Scripts\Activate.ps1
 pip install -U pip
 pip install docling docling-core tqdm pandas
 pip install -r requirements.txt
 
 
+3. Go to batch_docling_extract.py and follow instructions to format your PDF files into Markdown or Json.
+4. Run analysis_stine.py 
 
 
-python total_word_percent_erik.py --before_dir "data/Före Markdown" --after_dir "data/Efter Markdown" --out_dir "data/analysis_results"
