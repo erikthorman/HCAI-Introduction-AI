@@ -17,18 +17,20 @@ python batch_docling_extract.py \
 #Exempel
 """
 python batch_docling_extract.py \
-  --in_dir "/Users/erikthorman/Downloads/digital/Efter 2023.01.01" \
-  --out_dir "/Users/erikthorman/Downloads/digital/Efter 2023 Extraherad Text" \
-  --format both --recursive
-"""
-#eller
-
-"""
-python batch_docling_extract.py \
   --in_dir "/Users/erikthorman/Downloads/digital/Före 2023.01.01" \
   --out_dir "/Users/erikthorman/Downloads/digital/Före 2023 Extraherad Text" \
   --format both --recursive
 """
+#eller
+"""
+python batch_docling_extract.py \
+  --in_dir "/Users/erikthorman/Downloads/digital/Efter 2023" \
+  --out_dir "/Users/erikthorman/Downloads/digital/Efter 2023 Extraherad Text" \
+  --format both --recursive
+"""
+
+
+
 
 import os
 import re
