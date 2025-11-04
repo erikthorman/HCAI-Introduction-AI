@@ -142,7 +142,7 @@ def save_birst_visualizations(df_fore, df_after, base_dir, top_n=30):
 
     plt.figure(figsize=(12,10))
     sns.heatmap(heatmap_df, annot=True, fmt=".2f", cmap='coolwarm')
-    plt.title(f"Top {top_n} Words with Largest Change in BIRST Score", fontsize=14, pad=10)
+    plt.title(f"Top {top_n} Words with Largest Increase in BIRST Score", fontsize=14, pad=10)
     plt.xlabel("Time Period")
     plt.ylabel("Word")
     heatmap_path = os.path.join(base_dir, 'birst_top_words_heatmap.png')
@@ -195,6 +195,41 @@ def main():
         "socialförvaltningen": "socialförvaltning",
         "socialförvaltningens": "socialförvaltning",
         "omställningen" : "omställning",
+        "programmets": "programmet",
+        "programmen": "programmet",
+        "digitaliseringsresan": "digitaliseringsresa",
+        "digitaliseringsarbetet": "digitaliseringsarbetets",
+        "verksamhetsutvecklingen": "verksamhetsutveckling",
+        "förvaltningens": "förvaltning",
+        "förvaltningar": "förvaltning",
+        "planen" : "plan",
+        "strategins": "strategi",
+        "strategier": "strategi",
+        "lösningarna": "lösning",
+        "lösningars": "lösning",
+        "tjänsterna": "tjänst",
+        "tjänsters": "tjänst",
+        "möjligheterna": "möjlighet",
+        "möjligheters": "möjlighet",
+        "utmaningarna": "utmaning",
+        "utmaningars": "utmaning",
+        "förbättringarna": "förbättring",
+        "förbättringars": "förbättring",
+        "användarna": "användare",
+        "användares": "användare",
+        "digitaliseringens": "digitalisering",
+        "digitaliseringars": "digitalisering",
+        "invånarnas": "invånare",
+        "kommunens": "kommun",
+        "kommuners": "kommun",
+        "medborgarnas": "medborgare",
+        "medborgare": "medborgare",
+        "möjliggör": "möjliggöra",
+        "påverkar": "påverka",
+        "förbättrar": "förbättra",
+        "utvecklar": "utveckla",
+        "använder": "använda",
+        "digitaliserar": "digitalisera",
         # fler ord kan läggas till här
     }
     df_fore = merge_words_in_df(df_fore, MERGE_WORDS)
